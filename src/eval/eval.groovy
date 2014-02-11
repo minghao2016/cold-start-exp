@@ -1,5 +1,8 @@
+import org.grouplens.lenskit.eval.data.CSVDataSourceBuilder
+import org.grouplens.lenskit.eval.data.GenericDataSource
 import org.grouplens.lenskit.eval.data.crossfold.RandomOrder
-
+import org.grouplens.lenskit.eval.data.traintest.GenericTTDataBuilder
+import org.grouplens.lenskit.eval.data.traintest.TTDataSet
 import org.grouplens.lenskit.knn.NeighborhoodSize
 import org.grouplens.lenskit.knn.item.*
 import org.grouplens.lenskit.knn.user.*
@@ -34,17 +37,6 @@ target('download') {
 }
 
 
-target('cold-start') {
-    requires('crossfold')
-
-    ant.exec(executable: 'python', dir: config.dataDir) {
-        arg value: "${config.scriptDir}/cold_start.py"
-        arg value: "${config.dataDir}/ml100k-crossfold/train.*.csv"
-        arg value: "${config.dataDir}/ml100k-crossfold/test.*.csv"
-    }
-}
-
-
 // this target cross-folds the data. The target object can be used as the data set; it holds
 // the value of the last task (in this case, 'crossfold').  The crossfold won't actually be
 // avaiable until it is executed, but the evaluator automatically takes care of that.
@@ -66,6 +58,45 @@ def ml100k = target('crossfold') {
         holdout 10
         partitions 5
     }
+}
+
+def coldstart = target('cold-start') {
+    requires ml100k
+
+    ant.exec(executable: 'python', dir: config.dataDir) {
+        arg value: "${config.scriptDir}/cold_start.py"
+        arg value: "${config.dataDir}/ml100k-crossfold/train.*.csv"
+        arg value: "${config.dataDir}/ml100k-crossfold/test.*.csv"
+    }
+
+    perform {
+        int partition = 5
+        List<TTDataSet> dataSets = new ArrayList<TTDataSet>(partition);
+        File[] trainFiles = new File[partition];
+        File[] testFiles = new File[partition];
+        for (int i = 0; i < partition; i++) {
+            trainFiles[i] = new File(String.format(
+                    "${config.dataDir}/ml100k-crossfold/train.%d.popular.csv", i));
+            testFiles[i] = new File(String.format(
+                    "${config.dataDir}/ml100k-crossfold/test.%d.popular.csv", i));
+        }
+        for (int i = 0; i < partition; i++) {
+            CSVDataSourceBuilder trainBuilder = new CSVDataSourceBuilder()
+                    .setFile(trainFiles[i]);
+            CSVDataSourceBuilder testBuilder = new CSVDataSourceBuilder()
+                    .setFile(testFiles[i]);
+            GenericTTDataBuilder ttBuilder = new GenericTTDataBuilder("coldstart.popular" + "." + i);
+
+            dataSets.add(ttBuilder.setTest(testBuilder.build())
+                    .setTrain(trainBuilder.build())
+                    .setAttribute("DataSet", "coldstart.popular")
+                    .setAttribute("Partition", i)
+                    .build());
+        }
+        return dataSets;
+
+    }
+
 }
 
 // Let's define some algorithms
@@ -127,11 +158,11 @@ target('draw') {
 target('evaluate') {
     // this requires the ml100k target to be run first
     // can either reference a target by object or by name (as above)
-    requires ml100k
+    requires coldstart
 
     trainTest {
         // and just use the target as the data set. The evaluator will do the right thing.
-        dataset ml100k
+        dataset coldstart
 
         // Three different types of output for analysis.
         output "${config.analysisDir}/eval-results.csv"

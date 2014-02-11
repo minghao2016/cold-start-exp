@@ -95,7 +95,7 @@
           <analysisScript>${lenskit.eval.scriptDir}/chart.R</analysisScript>
           <targets>
             <!--<target>draw</target>-->
-            <target>cold-start</target>
+            <target>evaluate</target>
           </targets>
         </configuration>
       </plugin>

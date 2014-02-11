@@ -43,5 +43,5 @@ class PopularityStrategy(BaseColdStartStrategy):
         train_selected = train_this_fold[train_this_fold.item.isin(movie_list)]
         train_final = pd.concat([train_other_folds, train_selected])
         # output to files
-        train_final.to_csv(self.gen_name(train_name), header=False)
-        test.to_csv(self.gen_name(test_name), header=False)
+        train_final.to_csv(self.gen_name(train_name), header=False, index=False)
+        test.to_csv(self.gen_name(test_name), header=False, index=False)
