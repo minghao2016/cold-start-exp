@@ -26,7 +26,7 @@
 
     <!-- Uncomment and change below to 'yes' if you accept the MovieLens 
          data terms of service. -->
-    <!-- <grouplens.mldata.acknowledge>no</grouplens.mldata.acknowledge> -->
+     <grouplens.mldata.acknowledge>yes</grouplens.mldata.acknowledge>
   </properties>
 
   <dependencies>
@@ -94,8 +94,8 @@
           <script>${lenskit.eval.scriptDir}/eval.groovy</script>
           <analysisScript>${lenskit.eval.scriptDir}/chart.R</analysisScript>
           <targets>
-            <target>draw</target>
-            <target>analyze</target>
+            <!--<target>draw</target>-->
+            <target>cold-start</target>
           </targets>
         </configuration>
       </plugin>

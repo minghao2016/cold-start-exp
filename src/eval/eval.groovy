@@ -33,6 +33,18 @@ target('download') {
     }
 }
 
+
+target('cold-start') {
+    requires('crossfold')
+
+    ant.exec(executable: 'python', dir: config.dataDir) {
+        arg value: "${config.scriptDir}/cold_start.py"
+        arg value: "${config.dataDir}/ml100k-crossfold/train.*.csv"
+        arg value: "${config.dataDir}/ml100k-crossfold/test.*.csv"
+    }
+}
+
+
 // this target cross-folds the data. The target object can be used as the data set; it holds
 // the value of the last task (in this case, 'crossfold').  The crossfold won't actually be
 // avaiable until it is executed, but the evaluator automatically takes care of that.
@@ -110,6 +122,7 @@ target('draw') {
         algorithm extended
     }
 }
+
 
 target('evaluate') {
     // this requires the ml100k target to be run first
