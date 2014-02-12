@@ -71,3 +71,27 @@ class EntropyStrategy(GlobalColdStartStrategy):
         for p in x*1.0/x.sum():
             ent += -p*np.log(p)
         return ent
+
+
+class EntropyZeroStrategy(GlobalColdStartStrategy):
+    def __init__(self, name='entropyZero'):
+            self.name = name
+
+    def gen_movie_list(self, train_df, n):
+        total_rating = train_df['rating'].unique()
+        total_user = len(train_df['user'].unique())
+        grp = train_df.groupby(['item', 'rating'])['user'].count()
+        movies = grp.groupby(level=0).apply(lambda x: self.entropy_zero(x, total_rating, total_user))
+        movies.sort(ascending=False)
+        return movies.index[:n]
+
+    @staticmethod
+    def entropy_zero(x, total_rating, total_user):
+        ent = 0
+        # FIXME: handle the case when w is different among ratings
+        ratings = np.append(x.values, total_user-sum(x))
+        weights = np.append(np.ones(len(x)), 0.5)
+        norm = total_rating + 0.5
+        for p, w in zip(ratings*1.0/total_user, weights):
+            ent += -p*np.log(p)*w/norm
+        return ent
