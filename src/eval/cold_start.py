@@ -2,7 +2,8 @@ __author__ = 'shuochang'
 
 import argparse
 import glob
-from strategy import PopularityStrategy
+from strategy import PopularityStrategy, EntropyStrategy
+import pandas as pd
 
 
 def main():
@@ -17,9 +18,21 @@ def main():
         raise ValueError('Number of training files not equal to number of testing files')
 
     popular = PopularityStrategy()
+    entropy = EntropyStrategy()
+    nums = [5, 10, 15, 20]
     for count, (train_n, test_n) in enumerate(zip(train_files, test_files)):
         print "Processing %d fold with cold start" % count
-        popular.write_train_test(train_n, test_n, 10)
+        train = pd.read_csv(train_n, header=None, names=['user', 'item', 'rating', 'time'])
+        test = pd.read_csv(test_n, header=None, names=['user', 'item', 'rating', 'time'])
+        test_ids = test.user.unique()
+        user_fit = train.user.isin(test_ids)
+        train_other_folds = train[~user_fit]
+        train_this_fold = train[user_fit]
+        for n in nums:
+            select_fn = 'rated'
+            list_fn = 'list'
+            popular.write_train_test(train_n, test_n, select_fn, list_fn, train_this_fold, train_other_folds, test, n)
+            entropy.write_train_test(train_n, test_n, select_fn, list_fn, train_this_fold, train_other_folds, test, n)
 
 if __name__ == "__main__":
     main()

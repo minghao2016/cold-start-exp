@@ -27,15 +27,40 @@ import java.util.zip.GZIPOutputStream
 def zipFile = "${config.dataDir}/ml100k.zip"
 def dataDir = config.get('mldata.directory', "${config.dataDir}/ml100k")
 
+List<TTDataSet> coldStartTTData(String name) {
+    int partition = 5
+    List<TTDataSet> dataSets = new ArrayList<TTDataSet>(partition);
+    File[] trainFiles = new File[partition];
+    File[] testFiles = new File[partition];
+    for (int i = 0; i < partition; i++) {
+        trainFiles[i] = new File(String.format(
+                "${config.dataDir}/ml100k-crossfold/train.%d." + name + ".csv", i));
+        testFiles[i] = new File(String.format(
+                "${config.dataDir}/ml100k-crossfold/test.%d." + name + ".csv", i));
+    }
+    for (int i = 0; i < partition; i++) {
+        CSVDataSourceBuilder trainBuilder = new CSVDataSourceBuilder()
+                .setFile(trainFiles[i]);
+        CSVDataSourceBuilder testBuilder = new CSVDataSourceBuilder()
+                .setFile(testFiles[i]);
+        GenericTTDataBuilder ttBuilder = new GenericTTDataBuilder("coldstart." + name + "." + i);
 
+        dataSets.add(ttBuilder.setTest(testBuilder.build())
+                .setTrain(trainBuilder.build())
+                .setAttribute("DataSet", "coldstart." + name)
+                .setAttribute("Partition", i)
+                .build());
+    }
+    return dataSets;
+}
 // This target unpacks the data
 target('download') {
     perform {
         logger.warn("This analysis makes use of the MovieLens 100K data " +
-                            "set from GroupLens Research. Use of this data set is restricted to " +
-                            "non-commercial purposes and is only permitted in accordance with the " +
-                            "license terms.  More information is available at " +
-                            "<http://lenskit.grouplens.org/ML100K>.")
+                "set from GroupLens Research. Use of this data set is restricted to " +
+                "non-commercial purposes and is only permitted in accordance with the " +
+                "license terms.  More information is available at " +
+                "<http://lenskit.grouplens.org/ML100K>.")
     }
     ant.mkdir(dir: config.dataDir)
     ant.get(src: 'http://www.grouplens.org/system/files/ml-100k.zip',
@@ -79,35 +104,6 @@ def coldstart = target('cold-start') {
         arg value: "${config.dataDir}/ml100k-crossfold/train.*.csv"
         arg value: "${config.dataDir}/ml100k-crossfold/test.*.csv"
     }
-
-    perform {
-        int partition = 5
-        List<TTDataSet> dataSets = new ArrayList<TTDataSet>(partition);
-        File[] trainFiles = new File[partition];
-        File[] testFiles = new File[partition];
-        for (int i = 0; i < partition; i++) {
-            trainFiles[i] = new File(String.format(
-                    "${config.dataDir}/ml100k-crossfold/train.%d.popular.csv", i));
-            testFiles[i] = new File(String.format(
-                    "${config.dataDir}/ml100k-crossfold/test.%d.popular.csv", i));
-        }
-        for (int i = 0; i < partition; i++) {
-            CSVDataSourceBuilder trainBuilder = new CSVDataSourceBuilder()
-                    .setFile(trainFiles[i]);
-            CSVDataSourceBuilder testBuilder = new CSVDataSourceBuilder()
-                    .setFile(testFiles[i]);
-            GenericTTDataBuilder ttBuilder = new GenericTTDataBuilder("coldstart.popular" + "." + i);
-
-            dataSets.add(ttBuilder.setTest(testBuilder.build())
-                    .setTrain(trainBuilder.build())
-                    .setAttribute("DataSet", "coldstart.popular")
-                    .setAttribute("Partition", i)
-                    .build());
-        }
-        return dataSets;
-
-    }
-
 }
 
 def baseline = algorithm("baseline") {
@@ -120,8 +116,8 @@ def iiBase = {
     // use the item-item rating predictor with a baseline and normalizer
     bind ItemScorer to ItemItemScorer
     bind VectorSimilarity to CosineVectorSimilarity
-    bind (BaselineScorer, ItemScorer) to UserMeanItemScorer
-    bind (UserMeanBaseline, ItemScorer) to ItemMeanRatingItemScorer
+    bind(BaselineScorer, ItemScorer) to UserMeanItemScorer
+    bind(UserMeanBaseline, ItemScorer) to ItemMeanRatingItemScorer
     bind UserVectorNormalizer to BaselineSubtractingUserVectorNormalizer
 
     // retain 500 neighbors in the model, use 30 for prediction
@@ -141,8 +137,8 @@ def itemitem = algorithm("itemitem") {
 
 def funksvd = algorithm("funksvd") {
     bind ItemScorer to FunkSVDItemScorer
-    bind (BaselineScorer, ItemScorer) to UserMeanItemScorer
-    bind (UserMeanBaseline, ItemScorer) to ItemMeanRatingItemScorer
+    bind(BaselineScorer, ItemScorer) to UserMeanItemScorer
+    bind(UserMeanBaseline, ItemScorer) to ItemMeanRatingItemScorer
     set MeanDamping to 5.0d
     set FeatureCount to 25
     set IterationCount to 125
@@ -151,7 +147,7 @@ def funksvd = algorithm("funksvd") {
 
 void dumpModel(ItemItemModel model, String fn) {
     File file = new File(config.analysisDir, fn)
-    file.withWriter{ out ->
+    file.withWriter { out ->
         for (item in model.itemUniverse) {
             for (entry in model.getNeighbors(item)) {
                 long oitem = entry.getId();
@@ -187,7 +183,8 @@ target('evaluate') {
 
     trainTest {
         // and just use the target as the data set. The evaluator will do the right thing.
-        dataset coldstart
+        dataset coldStartTTData("popular")
+        dataset coldStartTTData("entropy")
 
         // Three different types of output for analysis.
         output "${config.analysisDir}/eval-results.csv"
