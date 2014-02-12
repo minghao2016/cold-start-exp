@@ -1,19 +1,32 @@
+import org.grouplens.lenskit.ItemScorer
 import org.grouplens.lenskit.eval.data.CSVDataSourceBuilder
 import org.grouplens.lenskit.eval.data.GenericDataSource
 import org.grouplens.lenskit.eval.data.crossfold.RandomOrder
 import org.grouplens.lenskit.eval.data.traintest.GenericTTDataBuilder
 import org.grouplens.lenskit.eval.data.traintest.TTDataSet
+import org.grouplens.lenskit.eval.metrics.predict.CoveragePredictMetric
+import org.grouplens.lenskit.eval.metrics.predict.MAEPredictMetric
+import org.grouplens.lenskit.eval.metrics.predict.NDCGPredictMetric
+import org.grouplens.lenskit.eval.metrics.predict.RMSEPredictMetric
+import org.grouplens.lenskit.iterative.IterationCount
 import org.grouplens.lenskit.knn.NeighborhoodSize
 import org.grouplens.lenskit.knn.item.*
+import org.grouplens.lenskit.knn.item.model.ItemItemModel
 import org.grouplens.lenskit.knn.user.*
 import org.grouplens.lenskit.baseline.*
+import org.grouplens.lenskit.mf.funksvd.FeatureCount
+import org.grouplens.lenskit.mf.funksvd.FunkSVDItemScorer
 import org.grouplens.lenskit.transform.normalize.*
 
-import org.apache.commons.lang3.BooleanUtils
 import org.grouplens.ExtendedItemUserMeanScorer
+import org.grouplens.lenskit.vectors.similarity.CosineVectorSimilarity
+import org.grouplens.lenskit.vectors.similarity.VectorSimilarity
+
+import java.util.zip.GZIPOutputStream
 
 def zipFile = "${config.dataDir}/ml100k.zip"
 def dataDir = config.get('mldata.directory', "${config.dataDir}/ml100k")
+
 
 // This target unpacks the data
 target('download') {
@@ -36,22 +49,20 @@ target('download') {
     }
 }
 
+def ml100k_source = csvfile("${dataDir}/u.data") {
+    delimiter "\t"
+    domain {
+        minimum 1.0
+        maximum 5.0
+        precision 1.0
+    }
+}
 
-// this target cross-folds the data. The target object can be used as the data set; it holds
-// the value of the last task (in this case, 'crossfold').  The crossfold won't actually be
-// avaiable until it is executed, but the evaluator automatically takes care of that.
 def ml100k = target('crossfold') {
     requires 'download'
 
     crossfold {
-        source csvfile("${dataDir}/u.data") {
-            delimiter "\t"
-            domain {
-                minimum 1.0
-                maximum 5.0
-                precision 1.0
-            }
-        }
+        source ml100k_source
         test "${config.dataDir}/ml100k-crossfold/test.%d.csv"
         train "${config.dataDir}/ml100k-crossfold/train.%d.csv"
         order RandomOrder
@@ -99,61 +110,75 @@ def coldstart = target('cold-start') {
 
 }
 
+def baseline = algorithm("baseline") {
+    bind ItemScorer to ItemMeanRatingItemScorer
+    set MeanDamping to 5.0d
+}
+
 // Let's define some algorithms
-def itemitem = algorithm("ItemItem") {
+def iiBase = {
     // use the item-item rating predictor with a baseline and normalizer
     bind ItemScorer to ItemItemScorer
+    bind VectorSimilarity to CosineVectorSimilarity
     bind (BaselineScorer, ItemScorer) to UserMeanItemScorer
     bind (UserMeanBaseline, ItemScorer) to ItemMeanRatingItemScorer
     bind UserVectorNormalizer to BaselineSubtractingUserVectorNormalizer
 
     // retain 500 neighbors in the model, use 30 for prediction
-    set ModelSize to 500
     set NeighborhoodSize to 30
 
-    // apply some Bayesian smoothing to the mean values
-    within(BaselineScorer, ItemScorer) {
-        set MeanDamping to 25.0d
-    }
 }
 
-def useruser = algorithm("UserUser") {
-    // use the user-user rating predictor
-    bind ItemScorer to UserUserItemScorer
+def itemitemSim = algorithm("itemitemSim") {
+    include iiBase
+    set ModelSize to 0
+}
+
+def itemitem = algorithm("itemitem") {
+    include iiBase
+    set ModelSize to 500
+}
+
+def funksvd = algorithm("funksvd") {
+    bind ItemScorer to FunkSVDItemScorer
     bind (BaselineScorer, ItemScorer) to UserMeanItemScorer
     bind (UserMeanBaseline, ItemScorer) to ItemMeanRatingItemScorer
-    bind VectorNormalizer to MeanVarianceNormalizer
-
-    // use 30 neighbors for predictions
-    set NeighborhoodSize to 30
-
-    // override normalizer within the neighborhood finder
-    // this makes it use a different normalizer (subtract user mean) for computing
-    // user similarities
-    within(NeighborhoodFinder) {
-        bind UserVectorNormalizer to BaselineSubtractingUserVectorNormalizer
-        // override baseline to use user mean
-        bind (UserMeanBaseline, ItemScorer) to GlobalMeanRatingItemScorer
-    }
-
-    // and apply some Bayesian damping to the baseline
-    within(BaselineScorer, ItemScorer) {
-        set MeanDamping to 25.0d
-    }
+    set MeanDamping to 5.0d
+    set FeatureCount to 25
+    set IterationCount to 125
 }
 
-def extended = algorithm("ExtendedItemUserMean") {
-    bind ItemScorer to ExtendedItemUserMeanScorer
+
+void dumpModel(ItemItemModel model, String fn) {
+    File file = new File(config.analysisDir, fn)
+    file.withWriter{ out ->
+        for (item in model.itemUniverse) {
+            for (entry in model.getNeighbors(item)) {
+                long oitem = entry.getId();
+                if (oitem >= item) {
+                    out.println("${item},${oitem},${entry.getScore()}");
+                }
+            }
+        }
+    }
+
 }
 
-// Draw a picture of the custom algorithm
-target('draw') {
-    dumpGraph {
-        output "${config.analysisDir}/extended.dot"
-        algorithm extended
+target('dump_sim') {
+    requires 'download'
+    File dir = new File(config.analysisDir)
+    dir.mkdirs()
+    File file = new File(config.analysisDir, "item_sim.csv")
+    if (!file.exists()) {
+        trainModel("dump-sim") {
+            input ml100k_source
+            algorithm itemitemSim
+            action {
+                dumpModel(it.get(ItemItemModel), "item_sim.csv");
+            }
+        }
     }
 }
-
 
 target('evaluate') {
     // this requires the ml100k target to be run first
@@ -168,14 +193,15 @@ target('evaluate') {
         output "${config.analysisDir}/eval-results.csv"
         predictOutput "${config.analysisDir}/eval-preds.csv"
         userOutput "${config.analysisDir}/eval-user.csv"
+        recommendOutput "${config.analysisDir}/eval-topN-recommend.csv"
 
         metric CoveragePredictMetric
         metric RMSEPredictMetric
         metric NDCGPredictMetric
+        metric MAEPredictMetric
 
         algorithm itemitem
-        algorithm useruser
-        algorithm extended
+        algorithm funksvd
     }
 }
 
