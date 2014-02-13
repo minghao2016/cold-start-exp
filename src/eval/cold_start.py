@@ -2,7 +2,7 @@ __author__ = 'shuochang'
 
 import argparse
 import glob
-from strategy import PopularityStrategy, EntropyStrategy
+from strategy import PopularityStrategy, EntropyStrategy, EntropyZeroStrategy
 import pandas as pd
 
 
@@ -19,7 +19,8 @@ def main():
 
     popular = PopularityStrategy()
     entropy = EntropyStrategy()
-    nums = [5, 10, 15, 20]
+    entropy_zero = EntropyZeroStrategy()
+    nums = [5, 10, 15]
     for count, (train_n, test_n) in enumerate(zip(train_files, test_files)):
         print "Processing %d fold with cold start" % count
         train = pd.read_csv(train_n, header=None, names=['user', 'item', 'rating', 'time'])
@@ -31,8 +32,12 @@ def main():
         for n in nums:
             select_fn = 'rated'
             list_fn = 'list'
-            popular.write_train_test(train_n, test_n, select_fn, list_fn, train_this_fold, train_other_folds, test, n)
-            entropy.write_train_test(train_n, test_n, select_fn, list_fn, train_this_fold, train_other_folds, test, n)
+            popular.write_train_test(train_n, test_n, select_fn, list_fn,
+                                     train_this_fold, train_other_folds, test, n)
+            entropy.write_train_test(train_n, test_n, select_fn, list_fn,
+                                     train_this_fold, train_other_folds, test, n)
+            entropy_zero.write_train_test(train_n, test_n, select_fn, list_fn,
+                                          train_this_fold, train_other_folds, test, n)
 
 if __name__ == "__main__":
     main()

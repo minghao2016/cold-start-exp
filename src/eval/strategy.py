@@ -74,11 +74,11 @@ class EntropyStrategy(GlobalColdStartStrategy):
 
 
 class EntropyZeroStrategy(GlobalColdStartStrategy):
-    def __init__(self, name='entropyZero'):
+    def __init__(self, name='entropy_zero'):
             self.name = name
 
     def gen_movie_list(self, train_df, n):
-        total_rating = train_df['rating'].unique()
+        total_rating = len(train_df['rating'].unique())
         total_user = len(train_df['user'].unique())
         grp = train_df.groupby(['item', 'rating'])['user'].count()
         movies = grp.groupby(level=0).apply(lambda x: self.entropy_zero(x, total_rating, total_user))

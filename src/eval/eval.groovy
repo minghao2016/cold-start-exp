@@ -24,8 +24,8 @@ import org.grouplens.lenskit.vectors.similarity.VectorSimilarity
 
 import java.util.zip.GZIPOutputStream
 
-def zipFile = "${config.dataDir}/ml100k.zip"
-def dataDir = config.get('mldata.directory', "${config.dataDir}/ml100k")
+def zipFile = "${config.dataDir}/ml-1m.zip"
+def dataDir = config.get('mldata.directory', "${config.dataDir}/ml-1m")
 
 List<TTDataSet> coldStartTTData(String name) {
     int partition = 5
@@ -34,9 +34,9 @@ List<TTDataSet> coldStartTTData(String name) {
     File[] testFiles = new File[partition];
     for (int i = 0; i < partition; i++) {
         trainFiles[i] = new File(String.format(
-                "${config.dataDir}/ml100k-crossfold/train.%d." + name + ".csv", i));
+                "${config.dataDir}/ml-1m-crossfold/train.%d." + name + ".csv", i));
         testFiles[i] = new File(String.format(
-                "${config.dataDir}/ml100k-crossfold/test.%d." + name + ".csv", i));
+                "${config.dataDir}/ml-1m-crossfold/test.%d." + name + ".csv", i));
     }
     for (int i = 0; i < partition; i++) {
         CSVDataSourceBuilder trainBuilder = new CSVDataSourceBuilder()
@@ -60,22 +60,22 @@ target('download') {
                 "set from GroupLens Research. Use of this data set is restricted to " +
                 "non-commercial purposes and is only permitted in accordance with the " +
                 "license terms.  More information is available at " +
-                "<http://lenskit.grouplens.org/ML100K>.")
+                "<http://lenskit.grouplens.org/ML1M>.")
     }
     ant.mkdir(dir: config.dataDir)
-    ant.get(src: 'http://www.grouplens.org/system/files/ml-100k.zip',
+    ant.get(src: 'http://files.grouplens.org/datasets/movielens/ml-1m.zip',
             dest: zipFile,
             skipExisting: true)
     ant.unzip(src: zipFile, dest: dataDir) {
         patternset {
-            include name: 'ml-100k/*'
+            include name: 'ml-1m/*'
         }
         mapper type: 'flatten'
     }
 }
 
-def ml100k_source = csvfile("${dataDir}/u.data") {
-    delimiter "\t"
+def ml1m_source = csvfile("${dataDir}/ratings.dat") {
+    delimiter "::"
     domain {
         minimum 1.0
         maximum 5.0
@@ -83,26 +83,26 @@ def ml100k_source = csvfile("${dataDir}/u.data") {
     }
 }
 
-def ml100k = target('crossfold') {
+def ml1m = target('crossfold') {
     requires 'download'
 
     crossfold {
-        source ml100k_source
-        test "${config.dataDir}/ml100k-crossfold/test.%d.csv"
-        train "${config.dataDir}/ml100k-crossfold/train.%d.csv"
+        source ml1m_source
+        test "${config.dataDir}/ml-1m-crossfold/test.%d.csv"
+        train "${config.dataDir}/ml-1m-crossfold/train.%d.csv"
         order RandomOrder
-        holdout 10
+        holdoutFraction 0.2
         partitions 5
     }
 }
 
 def coldstart = target('cold-start') {
-    requires ml100k
+    requires ml1m
 
     ant.exec(executable: 'python', dir: config.dataDir) {
         arg value: "${config.scriptDir}/cold_start.py"
-        arg value: "${config.dataDir}/ml100k-crossfold/train.*.csv"
-        arg value: "${config.dataDir}/ml100k-crossfold/test.*.csv"
+        arg value: "${config.dataDir}/ml-1m-crossfold/train.*.csv"
+        arg value: "${config.dataDir}/ml-1m-crossfold/test.*.csv"
     }
 }
 
@@ -167,7 +167,7 @@ target('dump_sim') {
     File file = new File(config.analysisDir, "item_sim.csv")
     if (!file.exists()) {
         trainModel("dump-sim") {
-            input ml100k_source
+            input ml1m_source
             algorithm itemitemSim
             action {
                 dumpModel(it.get(ItemItemModel), "item_sim.csv");
@@ -183,8 +183,15 @@ target('evaluate') {
 
     trainTest {
         // and just use the target as the data set. The evaluator will do the right thing.
-        dataset coldStartTTData("popular")
-        dataset coldStartTTData("entropy")
+        dataset coldStartTTData("popular_5")
+        dataset coldStartTTData("popular_10")
+        dataset coldStartTTData("popular_15")
+        dataset coldStartTTData("entropy_5")
+        dataset coldStartTTData("entropy_10")
+        dataset coldStartTTData("entropy_15")
+        dataset coldStartTTData("entropy_zero_5")
+        dataset coldStartTTData("entropy_zero_10")
+        dataset coldStartTTData("entropy_zero_15")
 
         // Three different types of output for analysis.
         output "${config.analysisDir}/eval-results.csv"

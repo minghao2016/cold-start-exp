@@ -94,8 +94,9 @@
           <script>${lenskit.eval.scriptDir}/eval.groovy</script>
           <analysisScript>${lenskit.eval.scriptDir}/chart.R</analysisScript>
           <targets>
-            <target>dump_sim</target>
+            <!--<target>dump_sim</target>-->
             <target>evaluate</target>
+              <!--<target>cold-start</target>-->
           </targets>
         </configuration>
       </plugin>
