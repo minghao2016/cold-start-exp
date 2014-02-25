@@ -206,6 +206,7 @@ target('evaluate') {
 
         algorithm itemitem
         algorithm funksvd
+        algorithm baseline
     }
 }
 

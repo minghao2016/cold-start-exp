@@ -2,45 +2,64 @@
 
 library("ggplot2")
 library("grid")
+library(data.table)
 
-all.data <- read.csv("eval-results.csv")
 
-all.agg <- aggregate(cbind(RMSE.ByRating, RMSE.ByUser, nDCG)
-                     ~ Algorithm,
-                     data=all.data, mean)
+setwd('~/Dropbox/cold_start/cold-start-exp/')
+result = fread('target/analysis/eval-results.csv')
 
-rmse.both <- rbind(
-  data.frame(Algorithm=all.agg$Algorithm, RMSE=all.agg$RMSE.ByRating,
-             mode="Global"),
-  data.frame(Algorithm=all.agg$Algorithm, RMSE=all.agg$RMSE.ByUser,
-             mode="Per-User"))
+# helper functions to process the file names
+getNum = function(str) {
+  l = strsplit(str, "_")[[1]]
+  return(as.numeric(l[length(l)]))
+} 
 
-chart.rmse <- qplot(RMSE, Algorithm, data=rmse.both, shape=mode, color=mode)
+removeNum = function(str) {
+  l = strsplit(str, "_")[[1]]
+  return(paste(l[1:length(l)-1], collapse='_'))
+} 
 
-chart.ndcg <- qplot(nDCG, Algorithm, data=all.agg)
+# create the final data frame for the plot
+plt = result[, lapply(.SD, mean),by=list(DataSet, Algorithm)]
+plt[, Strategy := sapply(DataSet, removeNum)]
+plt[, Num := sapply(DataSet, getNum)]
 
-chart.build <- ggplot(all.data, aes(Algorithm, BuildTime / 1000)) +
-  geom_boxplot() +
-  ylab("Build time (seconds)")
+# compute the average number of rated movies 
+movie.rated = data.table('DataSet'=unique(plt$DataSet))
+path = 'target/data/ml-1m-crossfold/'
+for(i in 1:dim(movie.rated)[1]){
+  re = glob2rx(paste("*.", 
+                     strsplit(t[i], "\\.")[[1]][2], 
+                     "_rated.csv", 
+                     sep=""))
+  fnames = grep(re, list.files(path), value=T)
+  num.user = 0 
+  num.rated = 0
+  for(j in 1:length(fnames)) {
+    df = fread(paste(path, fnames[j], sep=''))
+    num.user = num.user + length(unique(df$user))
+    num.rated = num.rated + sum(df$rated == 'True')
+  }
+  movie.rated[i, avg.rated := num.rated/num.user]
+}
 
-chart.test <- ggplot(all.data, aes(Algorithm, TestTime / 1000)) +
-  geom_boxplot() +
-  ylab("Test time (seconds)")
+setkey(plt, DataSet)
+setkey(movie.rated, DataSet)
+plt = plt[movie.rated]
 
-print("Outputting to accuracy.pdf")
-pdf("accuracy.pdf", paper="letter", width=0, height=0)
-error.layout <- grid.layout(nrow=3, heights=unit(0.333, "npc"))
-pushViewport(viewport(layout=error.layout, layout.pos.col=1))
-print(chart.rmse, vp=viewport(layout.pos.row=2))
-print(chart.ndcg, vp=viewport(layout.pos.row=3))
-popViewport()
-dev.off()
 
-print("Outputting to speed.pdf")
-pdf("speed.pdf", paper="letter", width=0, height=0)
-times.layout <- grid.layout(nrow=2, heights=unit(0.5, "npc"))
-pushViewport(viewport(layout=times.layout, layout.pos.col=1))
-print(chart.build, vp=viewport(layout.pos.row=1))
-print(chart.test, vp=viewport(layout.pos.row=2))
-popViewport()
-dev.off()
+print(ggplot(plt, aes(x=Num, y=avg.rated, color=Strategy)) + 
+        geom_line() + geom_point(size=4) +
+        labs(x='# movies showed', y='average # movies rated'))
+
+print(ggplot(plt, aes(x=Num, y=RMSE.ByUser, color=Strategy)) + 
+        geom_line(aes(linetype=Algorithm)) + geom_point(size=4) +
+        labs(x='# movies showed'))
+
+print(ggplot(plt, aes(x=Num, y=MAE.ByUser, color=Strategy)) + 
+        geom_line(aes(linetype=Algorithm)) + geom_point(size=4) + 
+        labs(x='# movies showed'))
+
+print(ggplot(plt, aes(x=Num, y=nDCG, color=Strategy)) + 
+        geom_line(aes(linetype=Algorithm)) + geom_point(size=4) + 
+        labs(x='# movies showed'))
