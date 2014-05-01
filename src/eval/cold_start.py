@@ -32,11 +32,11 @@ def main():
         for n in nums:
             select_fn = 'rated'
             list_fn = 'list'
-            popular.write_train_test(train_n, test_n, select_fn, list_fn,
+            popular.write_train_test_movielens(train_n, test_n, select_fn, list_fn,
                                      train_this_fold, train_other_folds, test, n)
-            entropy.write_train_test(train_n, test_n, select_fn, list_fn,
+            entropy.write_train_test_movielens(train_n, test_n, select_fn, list_fn,
                                      train_this_fold, train_other_folds, test, n)
-            entropy_zero.write_train_test(train_n, test_n, select_fn, list_fn,
+            entropy_zero.write_train_test_movielens(train_n, test_n, select_fn, list_fn,
                                           train_this_fold, train_other_folds, test, n)
 
 if __name__ == "__main__":

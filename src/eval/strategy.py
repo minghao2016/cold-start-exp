@@ -26,9 +26,12 @@ class BaseColdStartStrategy(object):
 
 class GlobalColdStartStrategy(BaseColdStartStrategy):
     @abc.abstractmethod
-    def gen_movie_list(self, train_df, n):
-        """generate a sequence of movies to rate"""
+    def rank_movie(self, df):
         pass
+
+    def gen_movie_list(self, train_df, n):
+        movies = self.rank_movie(train_df)
+        return movies[:n]
 
     def write_train_test(self, train_fn, test_fn, select_fn, movie_fn,
                          train_this_fold, train_other_folds, test, n):
@@ -44,26 +47,43 @@ class GlobalColdStartStrategy(BaseColdStartStrategy):
         train_final.to_csv(self.get_output_name(train_fn, str(n)), header=False, index=False)
         test.to_csv(self.get_output_name(test_fn, str(n)), header=False, index=False)
 
+    def write_train_test_movielens(self, train_fn, test_fn, cost_fn, movie_fn,
+                                   train_this_fold, train_other_folds, test, n):
+        movies = self.rank_movie(train_other_folds)
+        movie_list = pd.DataFrame({'item':movies, 'rank':range(1, len(movies)+1)})
+        train_this_fold_join = pd.merge(train_this_fold, movie_list, on='item')
+        train_selected = train_this_fold_join.groupby('user').apply(self.top_n, n, 'rank').reset_index(drop=True)
+        train_final = pd.concat([train_other_folds, train_selected[['user', 'item', 'rating', 'time']]])
+        # output to files
+        pd.DataFrame({'movie': movies}).to_csv(self.get_output_name(train_fn, str(n)+'_'+movie_fn))
+        train_selected.to_csv(self.get_output_name(train_fn, str(n)+'_'+cost_fn), index=False)
+        train_final.to_csv(self.get_output_name(train_fn, str(n)), header=False, index=False)
+        test.to_csv(self.get_output_name(test_fn, str(n)), header=False, index=False)
+
+    def top_n(self, df, n, col):
+        df_sort = df.sort(columns=col)
+        return df_sort[:n]
+
 
 class PopularityStrategy(GlobalColdStartStrategy):
     def __init__(self, name='popular'):
         self.name = name
 
-    def gen_movie_list(self, train_df, n):
+    def rank_movie(self, train_df):
         num_rating = train_df.groupby('item')['rating'].count()
         num_rating.sort(ascending=False)
-        return num_rating.index[:n]
+        return num_rating.index
 
 
 class EntropyStrategy(GlobalColdStartStrategy):
     def __init__(self, name='entropy'):
         self.name = name
 
-    def gen_movie_list(self, train_df, n):
+    def rank_movie(self, train_df):
         grp = train_df.groupby(['item', 'rating'])['user'].count()
         movies = grp.groupby(level=0).apply(self.entropy)
         movies.sort(ascending=False)
-        return movies.index[:n]
+        return movies.index
 
     @staticmethod
     def entropy(x):
@@ -77,13 +97,13 @@ class EntropyZeroStrategy(GlobalColdStartStrategy):
     def __init__(self, name='entropy_zero'):
             self.name = name
 
-    def gen_movie_list(self, train_df, n):
+    def rank_movie(self, train_df):
         total_rating = len(train_df['rating'].unique())
         total_user = len(train_df['user'].unique())
         grp = train_df.groupby(['item', 'rating'])['user'].count()
         movies = grp.groupby(level=0).apply(lambda x: self.entropy_zero(x, total_rating, total_user))
         movies.sort(ascending=False)
-        return movies.index[:n]
+        return movies.index
 
     @staticmethod
     def entropy_zero(x, total_rating, total_user):
