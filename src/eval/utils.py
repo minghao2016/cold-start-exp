@@ -4,6 +4,7 @@ import pandas as pd
 import scipy as sp
 import numpy as np
 
+
 def df_to_matrix(df, col1, col2, value='value', col1_label_name=None, col2_label_name=None):
     if not (col1 in df.columns)&(col2 in df.columns):
         raise ValueError('Can not find the column in the data frame')
@@ -27,6 +28,7 @@ def df_to_matrix(df, col1, col2, value='value', col1_label_name=None, col2_label
     col_label = df_idx[[col2+'_idx', col2_label_name]].drop_duplicates().set_index(col2+'_idx').sort()
     return (df_idx, mat, row_label, col_label)
 
+
 def mat_to_df(mat, label, movie):
     df = pd.DataFrame({'movie_x': mat.row,
                        'movie_y': mat.col,
@@ -38,7 +40,9 @@ def mat_to_df(mat, label, movie):
 
 def movie_cluster(clust_label, movie_label, idx):
     return pd.merge(pd.DataFrame({'cluster':clust_label}).reset_index(),
+
                     movie_label.reset_index(), left_on='index', right_on=idx)
+
 
 def path_sim(data_frames, half_path):
     trans_mat=[]
@@ -64,3 +68,19 @@ def path_sim(data_frames, half_path):
         new_data.append(2.0*data[i]/(diag[row[i]]+diag[col[i]]))
     final_mat = sp.sparse.coo_matrix((new_data, (row, col)))
     return (row_label, final_mat)
+
+
+def get_output_name(fname, appendix):
+    new_name = fname.split(".")
+    new_name.insert(len(new_name)-1, appendix)
+    return ".".join(new_name)
+
+
+HASH = 100000
+
+def fake_uid(clusters):
+    return ((clusters+1)*HASH).astype(int)
+
+
+def inverse_fake_uid(ids):
+    return (ids/HASH-1).astype(int)

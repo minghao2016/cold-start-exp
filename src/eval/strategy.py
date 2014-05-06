@@ -3,6 +3,7 @@ __author__ = 'shuochang'
 import abc
 import pandas as pd
 import numpy as np
+import utils
 
 
 class BaseColdStartStrategy(object):
@@ -17,11 +18,6 @@ class BaseColdStartStrategy(object):
     def write_train_test(self, train_name, test_name, n):
         """prepare the train and test files after applying the cold start strategy"""
         pass
-
-    def get_output_name(self, name, appendix=None):
-        new_name = name.split(".")
-        new_name.insert(len(new_name)-1, self.name + '_' + appendix if appendix else self.name)
-        return ".".join(new_name)
 
 
 class GlobalColdStartStrategy(BaseColdStartStrategy):
@@ -42,10 +38,10 @@ class GlobalColdStartStrategy(BaseColdStartStrategy):
         train_selected = train_this_fold[train_this_fold.rated].drop('rated', 1)
         train_final = pd.concat([train_other_folds, train_selected])
         # output to files
-        pd.DataFrame({'movie': movie_list}).to_csv(self.get_output_name(train_fn, str(n)+'_'+movie_fn))
-        train_this_fold.to_csv(self.get_output_name(train_fn, str(n)+'_'+select_fn), index=False)
-        train_final.to_csv(self.get_output_name(train_fn, str(n)), header=False, index=False)
-        test.to_csv(self.get_output_name(test_fn, str(n)), header=False, index=False)
+        pd.DataFrame({'movie': movie_list}).to_csv(utils.get_output_name(train_fn, str(n)+'_'+movie_fn))
+        train_this_fold.to_csv(utils.get_output_name(train_fn, str(n)+'_'+select_fn), index=False)
+        train_final.to_csv(utils.get_output_name(train_fn, str(n)), header=False, index=False)
+        test.to_csv(utils.get_output_name(test_fn, str(n)), header=False, index=False)
 
     def write_train_test_movielens(self, train_fn, test_fn, cost_fn, movie_fn,
                                    train_this_fold, train_other_folds, test, n):
@@ -55,10 +51,10 @@ class GlobalColdStartStrategy(BaseColdStartStrategy):
         train_selected = train_this_fold_join.groupby('user').apply(self.top_n, n, 'rank').reset_index(drop=True)
         train_final = pd.concat([train_other_folds, train_selected[['user', 'item', 'rating', 'time']]])
         # output to files
-        pd.DataFrame({'movie': movies}).to_csv(self.get_output_name(train_fn, str(n)+'_'+movie_fn))
-        train_selected.to_csv(self.get_output_name(train_fn, str(n)+'_'+cost_fn), index=False)
-        train_final.to_csv(self.get_output_name(train_fn, str(n)), header=False, index=False)
-        test.to_csv(self.get_output_name(test_fn, str(n)), header=False, index=False)
+        pd.DataFrame({'movie': movies}).to_csv(utils.get_output_name(train_fn, str(n)+'_'+movie_fn))
+        train_selected.to_csv(utils.get_output_name(train_fn, str(n)+'_'+cost_fn), index=False)
+        train_final.to_csv(utils.get_output_name(train_fn, str(n)), header=False, index=False)
+        test.to_csv(utils.get_output_name(test_fn, str(n)), header=False, index=False)
 
     def top_n(self, df, n, col):
         df_sort = df.sort(columns=col)
